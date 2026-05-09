@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reservation Calendar</title>
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/3.10.2/fullcalendar.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      display: none; /* hidden until key is validated */
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #e8ebee;
+      padding: 36px 16px;
+    }
+
+    .page-header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .page-header h1 {
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: #2c3e50;
+      letter-spacing: -0.3px;
+    }
+    .page-header p {
+      margin-top: 6px;
+      color: #7f8c8d;
+      font-size: 0.92rem;
+    }
+
+    #app {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.11);
+      padding: 28px;
+    }
+
+    /* FullCalendar toolbar */
+    .fc-toolbar.fc-header-toolbar { margin-bottom: 20px; }
+    .fc-toolbar h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #2c3e50;
+    }
+
+    /* Nav buttons */
+    .fc-button {
+      background: #3498db !important;
+      border: none !important;
+      border-radius: 7px !important;
+      padding: 6px 18px !important;
+      color: #fff !important;
+      font-size: 0.875rem !important;
+      font-weight: 600 !important;
+      text-shadow: none !important;
+      box-shadow: none !important;
+      cursor: pointer !important;
+      transition: background 0.15s !important;
+    }
+    .fc-button:hover  { background: #2980b9 !important; }
+    .fc-button:active,
+    .fc-button.fc-state-active { background: #2471a3 !important; }
+
+    /* Day-of-week header row */
+    .fc-day-header {
+      background: #34495e !important;
+      color: #fff !important;
+      font-size: 0.78rem !important;
+      font-weight: 700 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.07em !important;
+      padding: 10px 0 !important;
+    }
+
+    /* Day number */
+    .fc-day-number {
+      color: #2c3e50 !important;
+      font-size: 0.88rem !important;
+      font-weight: 700 !important;
+      padding: 5px 6px 0 0 !important;
+    }
+    .fc-other-month .fc-day-number { opacity: 0.38 !important; }
+
+    /*
+     * Today: highlight the day-number as a dark circle.
+     * FC v3's .fc-today background rule has no !important, so our inline
+     * background-color set by dayRender() overrides it automatically.
+     */
+    .fc-today .fc-day-number {
+      background: #2c3e50 !important;
+      color: #fff !important;
+      border-radius: 50% !important;
+      width: 28px !important;
+      height: 28px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 0 !important;
+      margin: 3px 4px 0 0 !important;
+      float: right !important;
+      font-size: 0.85rem !important;
+    }
+
+    /* Reservation marker dot */
+    .res-dot {
+      display: block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.5);
+      border: 2px solid rgba(255, 255, 255, 0.78);
+      margin: 2px auto 0;
+    }
+
+    /* Legend */
+    #legend {
+      display: none;
+      margin-top: 24px;
+      padding: 14px 18px;
+      background: #f7f9fb;
+      border: 1px solid #e2e8ed;
+      border-radius: 10px;
+    }
+    .legend-title {
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #95a5a6;
+      margin-bottom: 10px;
+    }
+    .legend-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 28px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 0.87rem;
+      color: #2c3e50;
+    }
+    .swatch {
+      width: 24px;
+      height: 24px;
+      border-radius: 5px;
+      border: 1px solid rgba(0,0,0,0.09);
+      flex-shrink: 0;
+    }
+
+    /* Loading / error states */
+    #loading {
+      text-align: center;
+      padding: 56px 20px;
+      color: #95a5a6;
+      font-size: 0.95rem;
+    }
+    #error {
+      display: none;
+      text-align: center;
+      padding: 40px 20px;
+      color: #c0392b;
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+    #error code {
+      background: #fdf0ef;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 0.88rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Reservation Calendar</h1>
+  <p>Cell color reflects the number of reservations in the 12 months before each date</p>
+</div>
+
+<div id="app">
+  <div id="loading">Loading calendar…</div>
+
+  <div id="error">
+    Could not load <code>events.json</code>.<br>
+    Serve this page over HTTP — e.g. <code>python3 -m http.server</code> — then open
+    <code>http://localhost:8000</code>.
+  </div>
+
+  <div id="calendar" style="display:none;"></div>
+
+  <div id="legend">
+    <div class="legend-title">Legend</div>
+    <div class="legend-items">
+
+      <div class="legend-item">
+        <div class="swatch" style="background:#2ecc71;"></div>
+        <span><strong>Green</strong> — 0 to 2 reservations in the prior 12 months</span>
+      </div>
+
+      <div class="legend-item">
+        <div class="swatch" style="background:#e74c3c;"></div>
+        <span><strong>Red</strong> — 3 or more reservations in the prior 12 months</span>
+      </div>
+
+      <div class="legend-item">
+        <div class="swatch" style="background:#27ae60; display:flex; align-items:center; justify-content:center;">
+          <span class="res-dot" style="margin:0;"></span>
+        </div>
+        <span><strong>Dot</strong> — an actual reservation falls on this date</span>
+      </div>
+
+      <div class="legend-item">
+        <div id="legend-today-circle"
+             style="width:24px; height:24px; border-radius:50%; background:#2c3e50;
+                    display:flex; align-items:center; justify-content:center;
+                    color:#fff; font-size:0.75rem; font-weight:700; flex-shrink:0;">
+          <span id="legend-today-num">?</span>
+        </div>
+        <span><strong>Circle</strong> — today's date</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/3.10.2/fullcalendar.min.js"></script>
+<script>
+$(document).ready(async function () {
+
+  var VALID_HASH = 'd01de83275abd18a237e84fd6db2e8ad293ea2ad533d11d43cd64c6c0f316517';
+
+  function initCalendar() {
+    // Show today's day-of-month in the legend circle
+    $('#legend-today-num').text(moment().date());
+
+    $.getJSON('events.json')
+      .done(function (data) {
+        var reservations = data.reservations;   // ["YYYY-MM-DD", ...]
+
+        // O(1) membership check
+        var reservationSet = Object.create(null);
+        reservations.forEach(function (d) { reservationSet[d] = true; });
+
+        /**
+         * Count how many reservation dates fall in the half-open window
+         *   [cellDate − 12 months,  cellDate)
+         * i.e. the 12 months immediately before (not including) cellDate.
+         */
+        function countLookback(cellMoment) {
+          var to   = cellMoment.clone().startOf('day');
+          var from = to.clone().subtract(12, 'months');
+          var n = 0;
+          for (var i = 0; i < reservations.length; i++) {
+            var r = moment(reservations[i]);
+            if (r.isSameOrAfter(from) && r.isBefore(to)) n++;
+          }
+          return n;
+        }
+
+        $('#loading').hide();
+        $('#calendar').show();
+        $('#legend').show();
+
+        $('#calendar').fullCalendar({
+          header: {
+            left:   'prev',
+            center: 'title',
+            right:  'next'
+          },
+          defaultDate: moment().format('YYYY-MM-DD'),
+          editable:    false,
+          eventLimit:  false,
+
+          // Called for every rendered day cell (background td).
+          // FC re-invokes this on every month navigation, so coloring
+          // stays correct without any extra wiring.
+          dayRender: function (date, cell) {
+            var count = countLookback(date);
+            cell.css('background-color', count >= 3 ? '#e74c3c' : '#2ecc71');
+
+            // Add a dot if this day has a reservation
+            if (reservationSet[date.format('YYYY-MM-DD')]) {
+              cell.append('<span class="res-dot"></span>');
+            }
+          }
+        });
+      })
+      .fail(function () {
+        $('#loading').hide();
+        $('#error').show();
+      });
+  }
+
+  // --- Key validation ---
+  // Missing or invalid key leaves body hidden (blank white page).
+  var params = new URLSearchParams(window.location.search);
+  var key = params.get('key');
+  if (!key) return;
+
+  try {
+    var encoded = new TextEncoder().encode(key);
+    var hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+    var hashHex = Array.from(new Uint8Array(hashBuffer))
+      .map(function (b) { return b.toString(16).padStart(2, '0'); })
+      .join('');
+    if (hashHex !== VALID_HASH) return;
+  } catch (e) {
+    return;
+  }
+
+  document.body.style.display = 'block';
+  initCalendar();
+
+});
+</script>
+</body>
+</html>
