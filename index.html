@@ -107,15 +107,24 @@
       font-size: 0.85rem !important;
     }
 
-    /* Reservation marker dot */
-    .res-dot {
-      display: block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: rgba(0, 0, 0, 0.5);
-      border: 2px solid rgba(255, 255, 255, 0.78);
-      margin: 2px auto 0;
+    /* Reservation event bars */
+    .fc-day-grid-event {
+      background-color: #2c3e50 !important;
+      border-color: #253545 !important;
+      border-radius: 3px !important;
+      margin: 2px 2px !important;
+      pointer-events: none !important;
+    }
+    .fc-day-grid-event .fc-content {
+      padding: 1px 0 !important;
+      height: 9px !important;
+    }
+    .fc-day-grid-event .fc-time,
+    .fc-day-grid-event .fc-title { display: none !important; }
+    /* Single-day events get a pill shape */
+    .fc-day-grid-event.fc-single-day {
+      border-radius: 8px !important;
+      margin: 2px 5px !important;
     }
 
     /* Legend */
@@ -153,6 +162,23 @@
       border-radius: 5px;
       border: 1px solid rgba(0,0,0,0.09);
       flex-shrink: 0;
+    }
+
+    /* Recent reservations section */
+    #recent-reservations {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #e2e8ed;
+    }
+    .recent-list {
+      list-style: disc;
+      padding-left: 22px;
+      margin-top: 8px;
+    }
+    .recent-list li {
+      font-size: 0.87rem;
+      color: #2c3e50;
+      line-height: 1.9;
     }
 
     /* Loading / error states */
@@ -211,10 +237,10 @@
       </div>
 
       <div class="legend-item">
-        <div class="swatch" style="background:#27ae60; display:flex; align-items:center; justify-content:center;">
-          <span class="res-dot" style="margin:0;"></span>
+        <div class="swatch" style="background:#27ae60; display:flex; align-items:center; justify-content:center; padding: 0 4px;">
+          <span style="display:block; background:#2c3e50; height:9px; width:100%; border-radius:4px;"></span>
         </div>
-        <span><strong>Dot</strong> — an actual reservation falls on this date</span>
+        <span><strong>Bar</strong> — an actual reservation</span>
       </div>
 
       <div class="legend-item">
@@ -240,32 +266,34 @@ $(document).ready(async function () {
   var VALID_HASH = 'd01de83275abd18a237e84fd6db2e8ad293ea2ad533d11d43cd64c6c0f316517';
 
   function initCalendar() {
-    // Show today's day-of-month in the legend circle
     $('#legend-today-num').text(moment().date());
 
     $.getJSON('events.json')
       .done(function (data) {
-        var reservations = data.reservations;   // ["YYYY-MM-DD", ...]
+        var reservations = data.reservations; // [{start, end}, ...]
 
-        // O(1) membership check
-        var reservationSet = Object.create(null);
-        reservations.forEach(function (d) { reservationSet[d] = true; });
-
-        /**
-         * Count how many reservation dates fall in the half-open window
-         *   [cellDate − 12 months,  cellDate)
-         * i.e. the 12 months immediately before (not including) cellDate.
-         */
+        // Count reservations whose `end` date falls in [cellDate − 12 months, cellDate)
         function countLookback(cellMoment) {
           var to   = cellMoment.clone().startOf('day');
           var from = to.clone().subtract(12, 'months');
           var n = 0;
           for (var i = 0; i < reservations.length; i++) {
-            var r = moment(reservations[i]);
-            if (r.isSameOrAfter(from) && r.isBefore(to)) n++;
+            var endDate = moment(reservations[i].end);
+            if (endDate.isSameOrAfter(from) && endDate.isBefore(to)) n++;
           }
           return n;
         }
+
+        // Build FC events; all-day end is exclusive in FC v3, so add 1 day
+        var fcEvents = reservations.map(function (r) {
+          return {
+            title: '',
+            start: r.start,
+            end: moment(r.end).add(1, 'day').format('YYYY-MM-DD'),
+            color: '#2c3e50',
+            allDay: true
+          };
+        });
 
         $('#loading').hide();
         $('#calendar').show();
@@ -280,20 +308,51 @@ $(document).ready(async function () {
           defaultDate: moment().format('YYYY-MM-DD'),
           editable:    false,
           eventLimit:  false,
+          events:      fcEvents,
 
-          // Called for every rendered day cell (background td).
-          // FC re-invokes this on every month navigation, so coloring
-          // stays correct without any extra wiring.
           dayRender: function (date, cell) {
             var count = countLookback(date);
             cell.css('background-color', count >= 3 ? '#e74c3c' : '#2ecc71');
+          },
 
-            // Add a dot if this day has a reservation
-            if (reservationSet[date.format('YYYY-MM-DD')]) {
-              cell.append('<span class="res-dot"></span>');
+          // Single-day events (end = start + 1 day exclusive) get a pill class
+          eventRender: function (event, element) {
+            var isSingle = !event.end || event.end.diff(event.start, 'days') <= 1;
+            if (isSingle) {
+              element.addClass('fc-single-day');
             }
           }
         });
+
+        // --- Recent reservations ---
+        var dutchMonths = [
+          'januari','februari','maart','april','mei','juni',
+          'juli','augustus','september','oktober','november','december'
+        ];
+
+        function fmtDate(dateStr) {
+          var m = moment(dateStr);
+          return m.date() + ' ' + dutchMonths[m.month()] + ' ' + m.year();
+        }
+
+        var recent = reservations.slice()
+          .sort(function (a, b) { return moment(b.end).diff(moment(a.end)); })
+          .slice(0, 4);
+
+        var html = '<div id="recent-reservations">'
+          + '<div class="legend-title">Laatste reserveringen</div>'
+          + '<ul class="recent-list">';
+        recent.forEach(function (r) {
+          html += '<li>';
+          if (r.start === r.end) {
+            html += fmtDate(r.end);
+          } else {
+            html += fmtDate(r.start) + ' – ' + fmtDate(r.end);
+          }
+          html += '</li>';
+        });
+        html += '</ul></div>';
+        $('#legend').append(html);
       })
       .fail(function () {
         $('#loading').hide();
